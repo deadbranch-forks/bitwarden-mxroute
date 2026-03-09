@@ -1,7 +1,36 @@
+name: bitwarden-mxroute
+
+x-runtime:
+  resource-limits:
+    bitwarden-mxroute:
+      compute: &compute_limits_bitwarden-mxroute
+        cpus: "1.0"
+        mem_reservation: "16m"
+        mem_limit: "32m"
+        memswap_limit: "56m"
+        pids_limit: 256
+        
 services:
-  bitwarden-mxroute-server:
-    container_name: bitwarden-mxroute-server
-    image: ghcr.io/deadbranches-agent/bitwarden-mxroute-server:latest
+  bitwarden-mxroute:
+    container_name: bitwarden-mxroute
+    image: ghcr.io/deadbranches-agent/bitwarden-mxroute:latest
+    <<: *compute_limits_bitwarden-mxroute
+    restart: unless-stopped
+    secrets:
+      - api_key
     ports:
       - "6123:6123"
     env_file: .env.example
+    labels:
+      STACK: bitwarden-mxroute
+      SERVICE: bitwarden-mxroute
+    stop_grace_period: 1m30s
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f -H 'Authorization Bearer $(cat /run/secrets/api_key)' http://127.0.0.1:6123/ || exit 1"]
+      interval: 142s
+      timeout: 11s
+      retries: 3
+
+secrets:
+  api_key:
+    file: /srv/bitwarden-mxroute/secrets/bitwarden-mxroute-api-key.txt
