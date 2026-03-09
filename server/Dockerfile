@@ -12,4 +12,4 @@ EXPOSE 6123
 
 ENV FLASK_APP=app.py
 
-CMD ["gunicorn", "-w", "1" '-b" "--host=0.0.0.0:6123", "app:app"] 
+CMD ["gunicorn", "-w", "1" "-b" "--host=0.0.0.0:6123", "app:app"] 
