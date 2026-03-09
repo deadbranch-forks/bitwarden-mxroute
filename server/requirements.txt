@@ -4,3 +4,4 @@ requests
 coolname
 flask-cors
 tldextract
+gunicorn
