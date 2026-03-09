@@ -6,6 +6,8 @@ COPY server/requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN apk add --no-cache curl
+
 COPY server .
 
 EXPOSE 6123
