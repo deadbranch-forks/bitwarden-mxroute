@@ -16,6 +16,9 @@ services:
   bitwarden-mxroute:
     container_name: bitwarden-mxroute
     image: ghcr.io/deadbranches-agent/bitwarden-mxroute
+    build:
+      context: /opt/bitwarden-mxroute/build
+      dockerfile: Dockerfile
     labels:
       STACK: bitwarden-mxroute
       SERVICE: bitwarden-mxroute
