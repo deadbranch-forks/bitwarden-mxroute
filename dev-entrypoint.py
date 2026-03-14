@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Dev entrypoint — optionally starts debugpy before gunicorn.
+"""Dev entrypoint — optionally starts debugpy before uvicorn.
 
 Set DEBUGPY_ENABLE=1 in compose to activate the remote debugger
-on port 5678. Without it, this just execs gunicorn normally.
+on port 5678. Without it, this just execs uvicorn normally.
 """
 import os
 import sys
@@ -16,17 +16,14 @@ def main():
             print("[dev-entrypoint] waiting for debugger to attach…", flush=True)
             debugpy.wait_for_client()
 
-    # Exec gunicorn — replaces this process.
-    os.execvp("gunicorn", [
-        "gunicorn",
-        "-w", "1",
-        "-b", "0.0.0.0:6123",
-        "--reload",
-        "--reload-engine", "auto",
-        "--access-logfile", "-",
-        "--error-logfile", "-",
-        "--log-level", "debug",
+    # Exec uvicorn — replaces this process.
+    os.execvp("uvicorn", [
+        "uvicorn",
         "app:app",
+        "--host", "0.0.0.0",
+        "--port", "6123",
+        "--reload",
+        "--log-level", "debug",
     ])
 
 if __name__ == "__main__":

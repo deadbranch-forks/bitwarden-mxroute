@@ -1,7 +1,5 @@
-Flask
-python-dotenv
-requests
+starlette
+uvicorn[standard]
+httpx
 coolname
-flask-cors
 tldextract
-gunicorn

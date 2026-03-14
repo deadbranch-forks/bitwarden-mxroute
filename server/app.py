@@ -1,17 +1,22 @@
 import os
 import re
 import secrets
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Dict
 
 import coolname
-import requests
+import httpx
 import tldextract
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from starlette.applications import Starlette
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, PlainTextResponse
+from starlette.routing import Route
+from starlette.types import ASGIApp, Receive, Scope, Send
 
-app = Flask(__name__)
-CORS(app)
+# ── Environment config ──────────────────────────────────────
 
 SERVER_API_TOKEN = os.getenv("SERVER_API_TOKEN")
 
@@ -19,12 +24,16 @@ MXROUTE_SERVER = os.getenv("MXROUTE_SERVER")
 MXROUTE_USERNAME = os.getenv("MXROUTE_USERNAME")
 MXROUTE_API_KEY = os.getenv("MXROUTE_API_KEY")
 
+# ── Constants ────────────────────────────────────────────────
+
 ALLOWED_TEMPLATE_PARTS = ["slug", "hex"]
 DOMAIN_ERROR_MESSAGE = "The 'target' option must be a valid domain (e.g. example.com)."
 TLD_EXTRACTOR = tldextract.TLDExtract(suffix_list_urls=())
 
 
-def build_request(domain):
+# ── Helpers ──────────────────────────────────────────────────
+
+def build_request(domain: str) -> tuple[str, dict[str, str]]:
     mxroute_endpoint = f"https://api.mxroute.com/domains/{domain}/forwarders"
     mxroute_headers = {
         "X-Server": MXROUTE_SERVER,
@@ -96,8 +105,8 @@ def build_template_alias(
     return alias_separator.join(alias_parts)
 
 
-def get_options(request_options) -> tuple[str, str, str]:
-    options: Dict[str, str] = {}
+def get_options(request_options: list[str]) -> tuple[str, str, str]:
+    options: dict[str, str] = {}
     for option in request_options:
         if "=" in option:
             key, value = option.split("=", 1)
@@ -138,80 +147,133 @@ def get_options(request_options) -> tuple[str, str, str]:
     return domain, destination, alias
 
 
-@app.before_request
-def check_auth():
-    if request.method == "OPTIONS":
-        return
+# ── Auth middleware ──────────────────────────────────────────
 
-    auth_header = request.headers.get("Authorization")
-    if not SERVER_API_TOKEN:
-        return jsonify({"error": "SERVER_API_TOKEN not configured"}), 500
+class AuthMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return jsonify({"error": "Missing or invalid Authorization header"}), 401
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-    token = auth_header.split(" ")[1]
-    if token != SERVER_API_TOKEN:
-        return jsonify({"error": "Invalid token"}), 401
+        if scope.get("method") == "OPTIONS":
+            await self.app(scope, receive, send)
+            return
+
+        if not SERVER_API_TOKEN:
+            response = JSONResponse({"error": "SERVER_API_TOKEN not configured"}, status_code=500)
+            await response(scope, receive, send)
+            return
+
+        auth_value = None
+        for key, val in scope.get("headers", []):
+            if key == b"authorization":
+                auth_value = val.decode()
+                break
+
+        if not auth_value or not auth_value.startswith("Bearer "):
+            response = JSONResponse({"error": "Missing or invalid Authorization header"}, status_code=401)
+            await response(scope, receive, send)
+            return
+
+        token = auth_value.split(" ", 1)[1]
+        if token != SERVER_API_TOKEN:
+            response = JSONResponse({"error": "Invalid token"}, status_code=401)
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
 
 
-@app.route("/")
-def status():
-    return "Bitwarden Mxroute plugin is running healthy."
+# ── Lifespan ─────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: Starlette) -> AsyncGenerator[None]:
+    app.state.http_client = httpx.AsyncClient()
+    yield
+    await app.state.http_client.aclose()
 
 
-@app.route("/add/<path:subpath>", methods=["POST"])
-def add(subpath):
-    data = request.get_json().get("domain")
+# ── Route handlers ───────────────────────────────────────────
+
+async def status(request: Request) -> PlainTextResponse:
+    return PlainTextResponse("Bitwarden Mxroute plugin is running healthy.")
+
+
+async def add(request: Request) -> JSONResponse:
+    body = await request.json()
+    data = body.get("domain")
 
     try:
         domain, destination, alias = get_options(data.split(","))
 
-        body = {
+        payload = {
             "alias": alias,
             "destinations": [destination],
         }
 
         endpoint, headers = build_request(domain)
+        client = request.app.state.http_client
 
-        response = requests.post(endpoint, headers=headers, json=body)
+        response = await client.post(endpoint, headers=headers, json=payload)
         response.raise_for_status()
 
-        return {"data": {"email": f"{alias}@{domain}"}}
+        return JSONResponse({"data": {"email": f"{alias}@{domain}"}})
     except ValueError as e:
-        return jsonify({"error": str(e)}), 412
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"error": str(e)}, status_code=412)
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.route("/list/<domain>", methods=["GET"])
-def get(domain):
+async def list_aliases(request: Request) -> JSONResponse:
+    domain = request.path_params["domain"]
     endpoint, headers = build_request(domain)
 
     try:
-        response = requests.get(endpoint, headers=headers)
+        client = request.app.state.http_client
+        response = await client.get(endpoint, headers=headers)
         response.raise_for_status()
 
         data = response.json()
 
-        return jsonify(data["data"]), response.status_code
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse(data["data"], status_code=response.status_code)
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
-@app.route("/delete/<email>", methods=["DELETE"])
-def delete(email):
+async def delete(request: Request) -> JSONResponse:
+    email = request.path_params["email"]
     try:
         alias, domain = email.split("@")
     except ValueError:
-        return jsonify({"error": "Invalid email format."}), 400
+        return JSONResponse({"error": "Invalid email format."}, status_code=400)
 
     endpoint, headers = build_request(domain)
 
     try:
-        response = requests.delete(f"{endpoint}/{alias}", headers=headers)
+        client = request.app.state.http_client
+        response = await client.delete(f"{endpoint}/{alias}", headers=headers)
         response.raise_for_status()
 
-        return jsonify({"message": "Deleted."}), response.status_code
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": str(e)}), 500
+        return JSONResponse({"message": "Deleted."}, status_code=response.status_code)
+    except httpx.HTTPError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── App construction ─────────────────────────────────────────
+
+routes = [
+    Route("/", status, methods=["GET"]),
+    Route("/add/{subpath:path}", add, methods=["POST"]),
+    Route("/list/{domain}", list_aliases, methods=["GET"]),
+    Route("/delete/{email}", delete, methods=["DELETE"]),
+]
+
+middleware = [
+    Middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]),
+    Middleware(AuthMiddleware),
+]
+
+app = Starlette(routes=routes, middleware=middleware, lifespan=lifespan)
