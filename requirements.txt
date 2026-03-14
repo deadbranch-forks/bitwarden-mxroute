@@ -1,5 +1,4 @@
 Flask
-python-dotenv
 requests
 coolname
 flask-cors
