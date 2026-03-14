@@ -1,6 +1,6 @@
 # Production compose file
 # ── Build stage ──────────────────────────────────────────────
-FROM python:3.11-slim AS build
+FROM python:3.14-slim-trixie AS build
 
 WORKDIR /build
 COPY requirements.txt .
@@ -9,10 +9,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ── Runtime stage ────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.14-slim-trixie
 WORKDIR /app
 COPY --from=build /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 COPY server .
 EXPOSE 6123
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:6123", "app:app"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "6123", "--workers", "1"]

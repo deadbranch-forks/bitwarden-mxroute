@@ -1,6 +1,5 @@
-Flask
-requests
+starlette
+uvicorn[standard]
+httpx
 coolname
-flask-cors
 tldextract
-gunicorn

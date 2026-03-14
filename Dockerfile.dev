@@ -5,7 +5,7 @@
 # Usage:
 #   docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up
 # ─────────────────────────────────────────────────────────────
-FROM python:3.11-slim
+FROM python:3.14-slim-trixie
 
 # Minimal dev utilities — avoid bloating the image on a 1 GB Pi.
 # curl: healthcheck / API poking
@@ -25,13 +25,13 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Dev-only packages — debugpy for remote attach, ipdb for
-# interactive breakpoints, watchdog for file-change detection
-# (gunicorn --reload uses polling otherwise, which is wasteful
-# on the Pi's USB SSD).
+# interactive breakpoints, pytest + pytest-asyncio for testing.
+# uvicorn[standard] includes watchfiles for efficient --reload.
 RUN pip install --no-cache-dir \
     debugpy \
     ipdb \
-    watchdog
+    pytest \
+    pytest-asyncio
 
 # Source will be bind-mounted at runtime; this COPY is a
 # fallback so the image works standalone too.
@@ -42,7 +42,7 @@ EXPOSE 6123
 EXPOSE 5678
 
 # Entrypoint handles optional debugpy activation via
-# DEBUGPY_ENABLE=1, then execs gunicorn with reload.
+# DEBUGPY_ENABLE=1, then execs uvicorn with reload.
 COPY dev-entrypoint.py /usr/local/bin/dev-entrypoint.py
 RUN chmod +x /usr/local/bin/dev-entrypoint.py
 
