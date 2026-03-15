@@ -8,8 +8,8 @@ x-runtime:
       compute: &compute_limits_bitwarden-mxroute
         cpus: "1.0"
         mem_reservation: "32m"
-        mem_limit: "64m"
-        memswap_limit: "82m"
+        mem_limit: "96m"
+        memswap_limit: "144m"
         pids_limit: 256
 
 services:
