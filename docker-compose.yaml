@@ -29,8 +29,6 @@ services:
     env_file: /srv/bitwarden-mxroute/secrets/bitwarden-mxroute.env
     secrets:
       - api_key
-    volumes:
-      - "/opt/bitwarden-mxroute/conf/gunicorn.conf.py:/app/gunicorn.conf.py:ro"
     networks: [http_net]
     stop_grace_period: 1m30s
     restart: unless-stopped

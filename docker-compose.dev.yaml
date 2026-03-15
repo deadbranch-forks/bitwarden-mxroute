@@ -26,7 +26,6 @@ services:
       - "5678:5678"
 
     environment:
-      FLASK_DEBUG: "1"
       # Set to "1" to start debugpy listener on boot.
       # Attach from your editor at <tailscale-ip>:5678.
       DEBUGPY_ENABLE: "0"
