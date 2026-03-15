@@ -71,6 +71,22 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+
+      # ── Visibility ───────────────────────────────────────────────
+      # GHCR defaults new packages to private.  GITHUB_TOKEN cannot
+      # change visibility — a classic PAT with write:packages is
+      # required (stored as PAT_PACKAGES).
+      - name: Ensure container package is public
+        if: github.event.repository.visibility == 'public'
+        run: |
+          PACKAGE=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/user/packages/container/${PACKAGE}" \
+            -f visibility=public
+        env:
+          GH_TOKEN: ${{ secrets.PAT_PACKAGES }}
+
       # ── Dev image ─────────────────────────────────────────────────
       # Runs after prod so the python:3.14-slim-trixie base layer
       # pulled under QEMU emulation is already cached
