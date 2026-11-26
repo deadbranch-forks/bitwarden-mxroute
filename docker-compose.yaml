@@ -7,7 +7,7 @@ x-runtime:
     bitwarden-mxroute:
       compute: &compute_limits_bitwarden-mxroute
         cpus: "1.0"
-        mem_reservation: "32m"
+        mem_reservation: "96m"
         mem_limit: "96m"
         memswap_limit: "144m"
         pids_limit: 256
@@ -31,7 +31,7 @@ services:
       - api_key
     networks: [http_net]
     stop_grace_period: 1m30s
-    restart: unless-stopped
+    restart: on-failure
     environment:
       TZID: "America/New_York"
     healthcheck:
